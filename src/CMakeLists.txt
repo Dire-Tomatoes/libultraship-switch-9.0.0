@@ -236,6 +236,11 @@ if (USE_OPENGLES)
     endif()
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    target_link_libraries(libultraship PRIVATE ${GLAD_LIBRARY} ${EGL_LIBRARY})
+    target_include_directories(libultraship PRIVATE ${DEVKITPRO}/portlibs/switch/include)
+endif()
+
 target_link_libraries(libultraship PUBLIC prism)
 
 #=================== Compile Options & Defs ===================

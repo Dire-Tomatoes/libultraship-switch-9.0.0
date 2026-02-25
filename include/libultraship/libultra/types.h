@@ -11,8 +11,16 @@ typedef signed short int s16;
 typedef unsigned short int u16;
 typedef signed int s32;
 typedef unsigned int u32;
+// On aarch64 (Switch), uint64_t is "unsigned long int" while "unsigned long long int"
+// is a distinct type. libnx's <switch/types.h> also typedefs u64/s64 using uint64_t/int64_t,
+// so we must match to avoid conflicting typedef errors.
+#ifdef __SWITCH__
+typedef int64_t s64;
+typedef uint64_t u64;
+#else
 typedef signed long long int s64;
 typedef unsigned long long int u64;
+#endif
 
 typedef volatile u8 vu8;
 typedef volatile u16 vu16;
