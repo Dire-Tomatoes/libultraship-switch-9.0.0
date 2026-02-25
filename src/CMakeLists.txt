@@ -1,3 +1,5 @@
+include(../cmake/cvars.cmake)
+
 add_library(libultraship STATIC)
 set_target_properties(libultraship PROPERTIES PREFIX "")
 set_property(TARGET libultraship PROPERTY CXX_STANDARD 20)
@@ -72,7 +74,7 @@ file(GLOB Source_Files__Log RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "log/*.h" "log/
 
 source_group("log" FILES ${Source_Files__Log})
 
-target_sources(libultraship PRIVATE ${Source_Files__Log} ${Source_Files__Log__SPDLog})
+target_sources(libultraship PRIVATE ${Source_Files__Log})
 
 #=================== Window ===================
 
@@ -90,7 +92,7 @@ target_sources(libultraship PRIVATE ${Source_Files__Window__Gui})
 
 #=================== Utils ===================
 
-file(GLOB Source_Files__Utils RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "utils/*.h" "utils/*.cpp" "utils/*.c")
+file(GLOB_RECURSE Source_Files__Utils RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "utils/*.h" "utils/*.cpp" "utils/*.c")
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     list(APPEND Source_Files__Utils ${CMAKE_CURRENT_SOURCE_DIR}/utils/AppleFolderManager.mm)
@@ -99,15 +101,15 @@ else()
     list(REMOVE_ITEM Header_Files__include ${CMAKE_CURRENT_SOURCE_DIR}/utils/AppleFolderManager.h)
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND Source_Files__Utils ${CMAKE_CURRENT_SOURCE_DIR}/utils/macUtils.mm)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/utils/macUtils.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
+else()
+    list(REMOVE_ITEM Header_Files__include ${CMAKE_CURRENT_SOURCE_DIR}/utils/macUtils.h)
+endif()
+
 source_group("utils" FILES ${Source_Files__Utils})
 target_sources(libultraship PRIVATE ${Source_Files__Utils})
-
-#=================== BinaryTools ==================
-
-file(GLOB Source_Files__Utils__BinaryTools RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "utils/binarytools/*.h" "utils/binarytools/*.cpp")
-
-source_group("utils/binarytools" FILES ${Source_Files__Utils__BinaryTools})
-target_sources(libultraship PRIVATE ${Source_Files__Utils__BinaryTools})
 
 #=================== Port ===================
 
@@ -146,6 +148,7 @@ target_sources(libultraship PRIVATE ${Source_Files__Resource} ${Source_Files__Re
 #=================== Graphic ===================
 
 file(GLOB Source_Files__Graphic RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "graphic/Fast3D/*.h" "graphic/Fast3D/*.cpp" "graphic/Fast3D/*.c")
+file(GLOB Source_Files__Graphic_Debug RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "graphic/Fast3D/debug/*.h" "graphic/Fast3D/debug/*.cpp" "graphic/Fast3D/debug/*.c")
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
     list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/gfx_dxgi*")
@@ -162,31 +165,28 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 source_group("graphic" FILES ${Source_Files__Graphic})
+source_group("graphic_debug" FILES ${Source_Files__Graphic_Debug})
 target_sources(libultraship PRIVATE ${Source_Files__Graphic})
-
-#=================== metal-cpp ===================
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    target_include_directories(libultraship PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../extern/metal-cpp)
-endif()
+target_sources(libultraship PRIVATE ${Source_Files__Graphic_Debug})
 
 #=================== Packages & Includes ===================
 
 target_include_directories(libultraship
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../extern ${CMAKE_CURRENT_BINARY_DIR} $<$<BOOL:${GFX_DEBUG_DISASSEMBLER}>:${CMAKE_CURRENT_SOURCE_DIR}/../../ZAPDTR/lib/libgfxd>
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../extern/spdlog/include ${CMAKE_CURRENT_SOURCE_DIR}/../extern/stb ${ADDITIONAL_LIB_INCLUDES}
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_DIR} ${ADDITIONAL_LIB_INCLUDES}
 )
 
 #=================== Linking ===================
-
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    target_link_libraries(libultraship PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,storm>")
-else()
-    target_link_libraries(libultraship PUBLIC storm)
+if(NOT EXCLUDE_MPQ_SUPPORT)
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+        target_link_libraries(libultraship PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,storm>")
+    else()
+        target_link_libraries(libultraship PUBLIC storm)
+    endif()
 endif()
+
 target_link_libraries(libultraship
-    PRIVATE StrHash64
-    PUBLIC ZAPDUtils ImGui tinyxml2
+    PUBLIC ImGui
 )
 
 target_link_libraries(libultraship PRIVATE stb)
@@ -201,10 +201,21 @@ target_link_libraries(libultraship PRIVATE libzip::zip)
 find_package(nlohmann_json REQUIRED)
 target_link_libraries(libultraship PUBLIC nlohmann_json::nlohmann_json)
 
+find_package(tinyxml2 REQUIRED)
+target_link_libraries(libultraship PUBLIC tinyxml2::tinyxml2)
+
+find_package(spdlog REQUIRED)
+target_link_libraries(libultraship PUBLIC spdlog::spdlog)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     target_link_libraries(libultraship PRIVATE Threads::Threads)
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    find_library(COCOA Cocoa)
+    target_link_libraries(libultraship PRIVATE ${COCOA})
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -225,7 +236,11 @@ if (USE_OPENGLES)
     endif()
 endif()
 
+target_link_libraries(libultraship PUBLIC prism)
+
 #=================== Compile Options & Defs ===================
+
+target_compile_definitions(libultraship PRIVATE ${GBI_UCODE})
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -233,6 +248,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         _CONSOLE
         _CRT_SECURE_NO_WARNINGS
         ENABLE_DX11
+        NOMINMAX
     )
 endif()
 
@@ -259,10 +275,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
             XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
         )
 
-        set_target_properties(SDL2 PROPERTIES
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-        )
+        if(TARGET SDL2)
+            set_target_properties(SDL2 PROPERTIES
+                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+                XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            )
+        endif()
 
         set_target_properties(zip PROPERTIES
             XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
@@ -318,7 +336,12 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
 		-Wno-parentheses
 		-Wno-narrowing
 		-Wno-missing-field-initializers
-        -Wno-implicit-function-declaration
+        $<$<COMPILE_LANGUAGE:C,OBJC>:-Wno-implicit-function-declaration>
         $<$<COMPILE_LANGUAGE:C,OBJC>:-Wno-int-conversion>
 	)
+    if (MSVC)
+    target_compile_options(libultraship PRIVATE
+        -Wno-implicit-function-declaration
+    )
+    endif()
 endif()

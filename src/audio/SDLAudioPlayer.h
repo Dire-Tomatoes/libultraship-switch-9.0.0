@@ -5,17 +5,18 @@
 namespace Ship {
 class SDLAudioPlayer : public AudioPlayer {
   public:
-    SDLAudioPlayer();
+    SDLAudioPlayer(AudioSettings settings) : AudioPlayer(settings) {
+    }
     ~SDLAudioPlayer();
 
-    int Buffered(void);
-    int GetDesiredBuffered(void);
+    int Buffered();
     void Play(const uint8_t* buf, size_t len);
 
   protected:
-    bool DoInit(void);
+    bool DoInit();
 
   private:
     SDL_AudioDeviceID mDevice;
+    int32_t mNumChannels = 2;
 };
 } // namespace Ship

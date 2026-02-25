@@ -6,13 +6,13 @@
 
 namespace Ship {
 
-#define DEFAULT_HIGH_FREQUENCY_RUMBLE_PERCENTAGE 100
-#define DEFAULT_LOW_FREQUENCY_RUMBLE_PERCENTAGE 100
+#define DEFAULT_HIGH_FREQUENCY_RUMBLE_PERCENTAGE 50
+#define DEFAULT_LOW_FREQUENCY_RUMBLE_PERCENTAGE 50
 
 class ControllerRumbleMapping : public ControllerMapping {
   public:
-    ControllerRumbleMapping(ShipDeviceIndex shipDeviceIndex, uint8_t portIndex, uint8_t lowFrequencyIntensityPercentage,
-                            uint8_t highFrequencyIntensityPercentage);
+    ControllerRumbleMapping(PhysicalDeviceType physicalDeviceType, uint8_t portIndex,
+                            uint8_t lowFrequencyIntensityPercentage, uint8_t highFrequencyIntensityPercentage);
     ~ControllerRumbleMapping();
     virtual void StartRumble() = 0;
     virtual void StopRumble() = 0;

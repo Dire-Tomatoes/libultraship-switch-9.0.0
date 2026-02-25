@@ -1,7 +1,7 @@
 #include "ControllerRumble.h"
 
 #include "public/bridge/consolevariablebridge.h"
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 #include <sstream>
 
 #include "controller/controldevice/controller/mapping/factories/RumbleMappingFactory.h"
@@ -34,7 +34,7 @@ void ControllerRumble::SaveRumbleMappingIdsToConfig() {
     }
 
     const std::string rumbleMappingIdsCvarKey =
-        StringHelper::Sprintf("gControllers.Port%d.RumbleMappingIds", mPortIndex + 1);
+        StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.RumbleMappingIds", mPortIndex + 1);
     if (rumbleMappingIdListString == "") {
         CVarClear(rumbleMappingIdsCvarKey.c_str());
     } else {
@@ -67,10 +67,10 @@ void ControllerRumble::ClearAllMappings() {
     SaveRumbleMappingIdsToConfig();
 }
 
-void ControllerRumble::ClearAllMappingsForDevice(ShipDeviceIndex shipDeviceIndex) {
+void ControllerRumble::ClearAllMappingsForDeviceType(PhysicalDeviceType physicalDeviceType) {
     std::vector<std::string> mappingIdsToRemove;
     for (auto [id, mapping] : mRumbleMappings) {
-        if (mapping->GetShipDeviceIndex() == shipDeviceIndex) {
+        if (mapping->GetPhysicalDeviceType() == physicalDeviceType) {
             mapping->EraseFromConfig();
             mappingIdsToRemove.push_back(id);
         }
@@ -85,8 +85,8 @@ void ControllerRumble::ClearAllMappingsForDevice(ShipDeviceIndex shipDeviceIndex
     SaveRumbleMappingIdsToConfig();
 }
 
-void ControllerRumble::AddDefaultMappings(ShipDeviceIndex shipDeviceIndex) {
-    for (auto mapping : RumbleMappingFactory::CreateDefaultSDLRumbleMappings(shipDeviceIndex, mPortIndex)) {
+void ControllerRumble::AddDefaultMappings(PhysicalDeviceType physicalDeviceType) {
+    for (auto mapping : RumbleMappingFactory::CreateDefaultSDLRumbleMappings(physicalDeviceType, mPortIndex)) {
         AddRumbleMapping(mapping);
     }
 
@@ -115,7 +115,7 @@ void ControllerRumble::ReloadAllMappingsFromConfig() {
     // the audio editor pattern doesn't work for this because that looks for ids that are either
     // hardcoded or provided by an otr file
     const std::string rumbleMappingIdsCvarKey =
-        StringHelper::Sprintf("gControllers.Port%d.RumbleMappingIds", mPortIndex + 1);
+        StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.RumbleMappingIds", mPortIndex + 1);
     std::stringstream rumbleMappingIdsStringStream(CVarGetString(rumbleMappingIdsCvarKey.c_str(), ""));
     std::string rumbleMappingIdString;
     while (getline(rumbleMappingIdsStringStream, rumbleMappingIdString, ',')) {
@@ -139,14 +139,16 @@ bool ControllerRumble::AddRumbleMappingFromRawPress() {
     AddRumbleMapping(mapping);
     mapping->SaveToConfig();
     SaveRumbleMappingIdsToConfig();
-    const std::string hasConfigCvarKey = StringHelper::Sprintf("gControllers.Port%d.HasConfig", mPortIndex + 1);
+    const std::string hasConfigCvarKey =
+        StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.HasConfig", mPortIndex + 1);
     CVarSetInteger(hasConfigCvarKey.c_str(), true);
     CVarSave();
     return true;
 }
 
-bool ControllerRumble::HasMappingsForShipDeviceIndex(ShipDeviceIndex lusIndex) {
-    return std::any_of(mRumbleMappings.begin(), mRumbleMappings.end(),
-                       [lusIndex](const auto& mapping) { return mapping.second->GetShipDeviceIndex() == lusIndex; });
+bool ControllerRumble::HasMappingsForPhysicalDeviceType(PhysicalDeviceType physicalDeviceType) {
+    return std::any_of(mRumbleMappings.begin(), mRumbleMappings.end(), [physicalDeviceType](const auto& mapping) {
+        return mapping.second->GetPhysicalDeviceType() == physicalDeviceType;
+    });
 }
 } // namespace Ship

@@ -16,11 +16,19 @@ float WindowGetAspectRatio() {
     return Ship::Context::GetInstance()->GetWindow()->GetCurrentAspectRatio();
 }
 
-void WindowGetPixelDepthPrepare(float x, float y) {
-    return Ship::Context::GetInstance()->GetWindow()->GetPixelDepthPrepare(x, y);
+bool WindowIsRunning() {
+    return Ship::Context::GetInstance()->GetWindow()->IsRunning();
 }
 
-uint16_t WindowGetPixelDepth(float x, float y) {
-    return Ship::Context::GetInstance()->GetWindow()->GetPixelDepth(x, y);
+int32_t WindowGetPosX() {
+    return Ship::Context::GetInstance()->GetWindow()->GetPosX();
+}
+
+int32_t WindowGetPosY() {
+    return Ship::Context::GetInstance()->GetWindow()->GetPosY();
+}
+
+bool WindowIsFullscreen() {
+    return Ship::Context::GetInstance()->GetWindow()->IsFullscreen();
 }
 }

@@ -1,14 +1,17 @@
 #pragma once
 
 #ifdef __cplusplus
+#include <string>
+
 namespace Ship {
 #endif
+
 typedef enum KbEventType {
     LUS_KB_EVENT_KEY_DOWN = 0,
     LUS_KB_EVENT_KEY_UP = 1,
     LUS_KB_EVENT_ALL_KEYS_UP = 2,
     LUS_KB_EVENT_MAX
-};
+} KbEventType;
 
 typedef enum KbScancode {
     LUS_KB_UNKNOWN = 0,
@@ -115,8 +118,31 @@ typedef enum KbScancode {
     LUS_KB_ARROWKEY_RIGHT = 333,
     LUS_KB_ARROWKEY_DOWN = 336,
     LUS_KB_MAX
+} KbScancode;
 
-};
+typedef enum MouseBtn {
+    LUS_MOUSE_BTN_LEFT,
+    LUS_MOUSE_BTN_MIDDLE,
+    LUS_MOUSE_BTN_RIGHT,
+    LUS_MOUSE_BTN_BACKWARD,
+    LUS_MOUSE_BTN_FORWARD,
+    LUS_MOUSE_BTN_COUNT,
+    LUS_MOUSE_BTN_UNKNOWN
+} MouseBtn;
+
+typedef enum WheelDirection {
+    LUS_WHEEL_NONE,
+    LUS_WHEEL_LEFT,
+    LUS_WHEEL_RIGHT,
+    LUS_WHEEL_UP,
+    LUS_WHEEL_DOWN,
+    LUS_WHEEL_UNKNOWN
+} WheelDirection;
+
 #ifdef __cplusplus
+static std::string mouseBtnNames[7] = { "MouseLeft",    "MouseMiddle",     "MouseRight",       "MouseBackward",
+                                        "MouseForward", "MOUSE_BTN_COUNT", "MOUSE_BTN_UNKNOWN" };
+static std::string wheelDirectionNames[6] = { "LUS_WHEEL_NONE", "WheelLeft", "WheelRight",
+                                              "WheelUp",        "WheelDown", "LUS_WHEEL_UNKNOWN" };
 } // namespace Ship
 #endif

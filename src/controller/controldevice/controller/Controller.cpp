@@ -8,7 +8,7 @@
 #include <SDL2/SDL_events.h>
 #endif
 #include <spdlog/spdlog.h>
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 
 #define M_TAU 6.2831853071795864769252867665590057 // 2 * pi
 #define MINIMUM_RADIUS_TO_MAP_NOTCH 0.9
@@ -70,7 +70,8 @@ uint8_t Controller::GetPortIndex() {
 }
 
 bool Controller::HasConfig() {
-    const std::string hasConfigCvarKey = StringHelper::Sprintf("gControllers.Port%d.HasConfig", mPortIndex + 1);
+    const std::string hasConfigCvarKey =
+        StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.HasConfig", mPortIndex + 1);
     return CVarGetInteger(hasConfigCvarKey.c_str(), false);
 }
 
@@ -85,30 +86,32 @@ void Controller::ClearAllMappings() {
     GetLED()->ClearAllMappings();
 }
 
-void Controller::ClearAllMappingsForDevice(ShipDeviceIndex shipDeviceIndex) {
+void Controller::ClearAllMappingsForDeviceType(PhysicalDeviceType physicalDeviceType) {
     for (auto [bitmask, button] : GetAllButtons()) {
-        button->ClearAllButtonMappingsForDevice(shipDeviceIndex);
+        button->ClearAllButtonMappingsForDeviceType(physicalDeviceType);
     }
-    GetLeftStick()->ClearAllMappingsForDevice(shipDeviceIndex);
-    GetRightStick()->ClearAllMappingsForDevice(shipDeviceIndex);
+    GetLeftStick()->ClearAllMappingsForDeviceType(physicalDeviceType);
+    GetRightStick()->ClearAllMappingsForDeviceType(physicalDeviceType);
 
     auto gyroMapping = GetGyro()->GetGyroMapping();
-    if (gyroMapping != nullptr && gyroMapping->GetShipDeviceIndex() == shipDeviceIndex) {
+    if (gyroMapping != nullptr && gyroMapping->GetPhysicalDeviceType() == physicalDeviceType) {
         GetGyro()->ClearGyroMapping();
     }
 
-    GetRumble()->ClearAllMappingsForDevice(shipDeviceIndex);
-    GetLED()->ClearAllMappingsForDevice(shipDeviceIndex);
+    GetRumble()->ClearAllMappingsForDeviceType(physicalDeviceType);
+    GetLED()->ClearAllMappingsForDeviceType(physicalDeviceType);
 }
 
-void Controller::AddDefaultMappings(ShipDeviceIndex shipDeviceIndex) {
+void Controller::AddDefaultMappings(PhysicalDeviceType physicalDeviceType) {
     for (auto [bitmask, button] : GetAllButtons()) {
-        button->AddDefaultMappings(shipDeviceIndex);
+        button->AddDefaultMappings(physicalDeviceType);
     }
-    GetLeftStick()->AddDefaultMappings(shipDeviceIndex);
-    GetRumble()->AddDefaultMappings(shipDeviceIndex);
+    GetLeftStick()->AddDefaultMappings(physicalDeviceType);
+    GetRightStick()->AddDefaultMappings(physicalDeviceType);
+    GetRumble()->AddDefaultMappings(physicalDeviceType);
 
-    const std::string hasConfigCvarKey = StringHelper::Sprintf("gControllers.Port%d.HasConfig", mPortIndex + 1);
+    const std::string hasConfigCvarKey =
+        StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.HasConfig", mPortIndex + 1);
     CVarSetInteger(hasConfigCvarKey.c_str(), true);
     CVarSave();
 }
@@ -124,56 +127,7 @@ void Controller::ReloadAllMappingsFromConfig() {
     GetLED()->ReloadAllMappingsFromConfig();
 }
 
-void Controller::ReadToPad(OSContPad* pad) {
-    OSContPad padToBuffer = { 0 };
-
-    // Button Inputs
-    for (auto [bitmask, button] : mButtons) {
-        button->UpdatePad(padToBuffer.button);
-    }
-
-    // Stick Inputs
-    GetLeftStick()->UpdatePad(padToBuffer.stick_x, padToBuffer.stick_y);
-    GetRightStick()->UpdatePad(padToBuffer.right_stick_x, padToBuffer.right_stick_y);
-
-    // Gyro
-    GetGyro()->UpdatePad(padToBuffer.gyro_x, padToBuffer.gyro_y);
-
-    mPadBuffer.push_front(padToBuffer);
-    if (pad != nullptr) {
-        auto& padFromBuffer =
-            mPadBuffer[std::min(mPadBuffer.size() - 1, (size_t)CVarGetInteger("gSimulatedInputLag", 0))];
-
-        pad->button |= padFromBuffer.button;
-
-        if (pad->stick_x == 0) {
-            pad->stick_x = padFromBuffer.stick_x;
-        }
-        if (pad->stick_y == 0) {
-            pad->stick_y = padFromBuffer.stick_y;
-        }
-
-        if (pad->right_stick_x == 0) {
-            pad->right_stick_x = padFromBuffer.right_stick_x;
-        }
-        if (pad->right_stick_y == 0) {
-            pad->right_stick_y = padFromBuffer.right_stick_y;
-        }
-
-        if (pad->gyro_x == 0) {
-            pad->gyro_x = padFromBuffer.gyro_x;
-        }
-        if (pad->gyro_y == 0) {
-            pad->gyro_y = padFromBuffer.gyro_y;
-        }
-    }
-
-    while (mPadBuffer.size() > 6) {
-        mPadBuffer.pop_back();
-    }
-}
-
-bool Controller::ProcessKeyboardEvent(Ship::KbEventType eventType, Ship::KbScancode scancode) {
+bool Controller::ProcessKeyboardEvent(KbEventType eventType, KbScancode scancode) {
     bool result = false;
     for (auto [bitmask, button] : GetAllButtons()) {
         result = button->ProcessKeyboardEvent(eventType, scancode) || result;
@@ -183,25 +137,35 @@ bool Controller::ProcessKeyboardEvent(Ship::KbEventType eventType, Ship::KbScanc
     return result;
 }
 
-bool Controller::HasMappingsForShipDeviceIndex(ShipDeviceIndex lusIndex) {
+bool Controller::ProcessMouseButtonEvent(bool isPressed, MouseBtn mouseButton) {
+    bool result = false;
     for (auto [bitmask, button] : GetAllButtons()) {
-        if (button->HasMappingsForShipDeviceIndex(lusIndex)) {
+        result = button->ProcessMouseButtonEvent(isPressed, mouseButton) || result;
+    }
+    result = GetLeftStick()->ProcessMouseButtonEvent(isPressed, mouseButton) || result;
+    result = GetRightStick()->ProcessMouseButtonEvent(isPressed, mouseButton) || result;
+    return result;
+}
+
+bool Controller::HasMappingsForPhysicalDeviceType(PhysicalDeviceType physicalDeviceType) {
+    for (auto [bitmask, button] : GetAllButtons()) {
+        if (button->HasMappingsForPhysicalDeviceType(physicalDeviceType)) {
             return true;
         }
     }
-    if (GetLeftStick()->HasMappingsForShipDeviceIndex(lusIndex)) {
+    if (GetLeftStick()->HasMappingsForPhysicalDeviceType(physicalDeviceType)) {
         return true;
     }
-    if (GetRightStick()->HasMappingsForShipDeviceIndex(lusIndex)) {
+    if (GetRightStick()->HasMappingsForPhysicalDeviceType(physicalDeviceType)) {
         return true;
     }
-    if (GetGyro()->HasMappingForShipDeviceIndex(lusIndex)) {
+    if (GetGyro()->HasMappingForPhysicalDeviceType(physicalDeviceType)) {
         return true;
     }
-    if (GetRumble()->HasMappingsForShipDeviceIndex(lusIndex)) {
+    if (GetRumble()->HasMappingsForPhysicalDeviceType(physicalDeviceType)) {
         return true;
     }
-    if (GetLED()->HasMappingsForShipDeviceIndex(lusIndex)) {
+    if (GetLED()->HasMappingsForPhysicalDeviceType(physicalDeviceType)) {
         return true;
     }
 
@@ -210,96 +174,6 @@ bool Controller::HasMappingsForShipDeviceIndex(ShipDeviceIndex lusIndex) {
 
 std::shared_ptr<ControllerButton> Controller::GetButtonByBitmask(CONTROLLERBUTTONS_T bitmask) {
     return mButtons[bitmask];
-}
-
-void Controller::MoveMappingsToDifferentController(std::shared_ptr<Controller> newController,
-                                                   ShipDeviceIndex lusIndex) {
-    for (auto [bitmask, button] : GetAllButtons()) {
-        std::vector<std::string> buttonMappingIdsToRemove;
-        for (auto [id, mapping] : button->GetAllButtonMappings()) {
-            if (mapping->GetShipDeviceIndex() == lusIndex) {
-                buttonMappingIdsToRemove.push_back(id);
-
-                mapping->SetPortIndex(newController->GetPortIndex());
-                mapping->SaveToConfig();
-
-                newController->GetButtonByBitmask(bitmask)->AddButtonMapping(mapping);
-            }
-        }
-        newController->GetButtonByBitmask(bitmask)->SaveButtonMappingIdsToConfig();
-        for (auto id : buttonMappingIdsToRemove) {
-            button->ClearButtonMappingId(id);
-        }
-    }
-
-    for (auto stick : { GetLeftStick(), GetRightStick() }) {
-        auto newControllerStick =
-            stick->LeftOrRightStick() == LEFT_STICK ? newController->GetLeftStick() : newController->GetRightStick();
-        for (auto [direction, mappings] : stick->GetAllAxisDirectionMappings()) {
-            std::vector<std::string> axisDirectionMappingIdsToRemove;
-            for (auto [id, mapping] : mappings) {
-                if (mapping->GetShipDeviceIndex() == lusIndex) {
-                    axisDirectionMappingIdsToRemove.push_back(id);
-
-                    mapping->SetPortIndex(newController->GetPortIndex());
-                    mapping->SaveToConfig();
-
-                    newControllerStick->AddAxisDirectionMapping(direction, mapping);
-                }
-            }
-            newControllerStick->SaveAxisDirectionMappingIdsToConfig();
-            for (auto id : axisDirectionMappingIdsToRemove) {
-                stick->ClearAxisDirectionMappingId(direction, id);
-            }
-        }
-    }
-
-    if (GetGyro()->GetGyroMapping() != nullptr && GetGyro()->GetGyroMapping()->GetShipDeviceIndex() == lusIndex) {
-        GetGyro()->GetGyroMapping()->SetPortIndex(newController->GetPortIndex());
-        GetGyro()->GetGyroMapping()->SaveToConfig();
-
-        auto oldGyroMappingFromNewController = newController->GetGyro()->GetGyroMapping();
-        if (oldGyroMappingFromNewController != nullptr) {
-            oldGyroMappingFromNewController->SetPortIndex(GetPortIndex());
-            oldGyroMappingFromNewController->SaveToConfig();
-        }
-        newController->GetGyro()->SetGyroMapping(GetGyro()->GetGyroMapping());
-        newController->GetGyro()->SaveGyroMappingIdToConfig();
-        GetGyro()->SetGyroMapping(oldGyroMappingFromNewController);
-        GetGyro()->SaveGyroMappingIdToConfig();
-    }
-
-    std::vector<std::string> rumbleMappingIdsToRemove;
-    for (auto [id, mapping] : GetRumble()->GetAllRumbleMappings()) {
-        if (mapping->GetShipDeviceIndex() == lusIndex) {
-            rumbleMappingIdsToRemove.push_back(id);
-
-            mapping->SetPortIndex(newController->GetPortIndex());
-            mapping->SaveToConfig();
-
-            newController->GetRumble()->AddRumbleMapping(mapping);
-        }
-    }
-    newController->GetRumble()->SaveRumbleMappingIdsToConfig();
-    for (auto id : rumbleMappingIdsToRemove) {
-        GetRumble()->ClearRumbleMappingId(id);
-    }
-
-    std::vector<std::string> ledMappingIdsToRemove;
-    for (auto [id, mapping] : GetLED()->GetAllLEDMappings()) {
-        if (mapping->GetShipDeviceIndex() == lusIndex) {
-            ledMappingIdsToRemove.push_back(id);
-
-            mapping->SetPortIndex(newController->GetPortIndex());
-            mapping->SaveToConfig();
-
-            newController->GetLED()->AddLEDMapping(mapping);
-        }
-    }
-    newController->GetLED()->SaveLEDMappingIdsToConfig();
-    for (auto id : ledMappingIdsToRemove) {
-        GetLED()->ClearLEDMappingId(id);
-    }
 }
 
 std::vector<std::shared_ptr<ControllerMapping>> Controller::GetAllMappings() {
@@ -331,3 +205,65 @@ std::vector<std::shared_ptr<ControllerMapping>> Controller::GetAllMappings() {
     return allMappings;
 }
 } // namespace Ship
+
+namespace LUS {
+Controller::Controller(uint8_t portIndex, std::vector<CONTROLLERBUTTONS_T> additionalBitmasks)
+    : Ship::Controller(portIndex, additionalBitmasks) {
+}
+
+Controller::Controller(uint8_t portIndex) : Ship::Controller(portIndex, {}) {
+}
+
+void Controller::ReadToPad(void* pad) {
+    ReadToOSContPad((OSContPad*)pad);
+}
+
+void Controller::ReadToOSContPad(OSContPad* pad) {
+    OSContPad padToBuffer = { 0 };
+
+    // Button Inputs
+    for (auto [bitmask, button] : mButtons) {
+        button->UpdatePad(padToBuffer.button);
+    }
+
+    // Stick Inputs
+    GetLeftStick()->UpdatePad(padToBuffer.stick_x, padToBuffer.stick_y);
+    GetRightStick()->UpdatePad(padToBuffer.right_stick_x, padToBuffer.right_stick_y);
+
+    // Gyro
+    GetGyro()->UpdatePad(padToBuffer.gyro_x, padToBuffer.gyro_y);
+
+    mPadBuffer.push_front(padToBuffer);
+    if (pad != nullptr) {
+        auto& padFromBuffer =
+            mPadBuffer[std::min(mPadBuffer.size() - 1, (size_t)CVarGetInteger(CVAR_SIMULATED_INPUT_LAG, 0))];
+
+        pad->button |= padFromBuffer.button;
+
+        if (pad->stick_x == 0) {
+            pad->stick_x = padFromBuffer.stick_x;
+        }
+        if (pad->stick_y == 0) {
+            pad->stick_y = padFromBuffer.stick_y;
+        }
+
+        if (pad->right_stick_x == 0) {
+            pad->right_stick_x = padFromBuffer.right_stick_x;
+        }
+        if (pad->right_stick_y == 0) {
+            pad->right_stick_y = padFromBuffer.right_stick_y;
+        }
+
+        if (pad->gyro_x == 0) {
+            pad->gyro_x = padFromBuffer.gyro_x;
+        }
+        if (pad->gyro_y == 0) {
+            pad->gyro_y = padFromBuffer.gyro_y;
+        }
+    }
+
+    while (mPadBuffer.size() > 6) {
+        mPadBuffer.pop_back();
+    }
+}
+} // namespace LUS

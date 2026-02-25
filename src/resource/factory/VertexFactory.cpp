@@ -1,14 +1,17 @@
 #include "resource/factory/VertexFactory.h"
 #include "resource/type/Vertex.h"
 #include "spdlog/spdlog.h"
+#include "libultraship/libultra/gbi.h"
 
-namespace LUS {
-std::shared_ptr<Ship::IResource> ResourceFactoryBinaryVertexV0::ReadResource(std::shared_ptr<Ship::File> file) {
-    if (!FileHasValidFormatAndReader(file)) {
+namespace Fast {
+std::shared_ptr<Ship::IResource>
+ResourceFactoryBinaryVertexV0::ReadResource(std::shared_ptr<Ship::File> file,
+                                            std::shared_ptr<Ship::ResourceInitData> initData) {
+    if (!FileHasValidFormatAndReader(file, initData)) {
         return nullptr;
     }
 
-    auto vertex = std::make_shared<Vertex>(file->InitData);
+    auto vertex = std::make_shared<Vertex>(initData);
     auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
 
     uint32_t count = reader->ReadUInt32();
@@ -32,12 +35,14 @@ std::shared_ptr<Ship::IResource> ResourceFactoryBinaryVertexV0::ReadResource(std
     return vertex;
 }
 
-std::shared_ptr<Ship::IResource> ResourceFactoryXMLVertexV0::ReadResource(std::shared_ptr<Ship::File> file) {
-    if (!FileHasValidFormatAndReader(file)) {
+std::shared_ptr<Ship::IResource>
+ResourceFactoryXMLVertexV0::ReadResource(std::shared_ptr<Ship::File> file,
+                                         std::shared_ptr<Ship::ResourceInitData> initData) {
+    if (!FileHasValidFormatAndReader(file, initData)) {
         return nullptr;
     }
 
-    auto vertex = std::make_shared<Vertex>(file->InitData);
+    auto vertex = std::make_shared<Vertex>(initData);
 
     auto child =
         std::get<std::shared_ptr<tinyxml2::XMLDocument>>(file->Reader)->FirstChildElement()->FirstChildElement();
@@ -66,4 +71,4 @@ std::shared_ptr<Ship::IResource> ResourceFactoryXMLVertexV0::ReadResource(std::s
 
     return vertex;
 }
-} // namespace LUS
+} // namespace Fast

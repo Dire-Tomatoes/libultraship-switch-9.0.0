@@ -9,14 +9,11 @@ typedef std::chrono::duration<long long, n64CycleRate> n64CycleRateDuration;
 
 extern "C" {
 uint8_t __osMaxControllers = MAXCONTROLLERS;
+uint64_t __osCurrentTime = 0;
 
 int32_t osContInit(OSMesgQueue* mq, uint8_t* controllerBits, OSContStatus* status) {
     *controllerBits = 0;
-
-    if (SDL_Init(SDL_INIT_GAMECONTROLLER) != 0) {
-        SPDLOG_ERROR("Failed to initialize SDL game controllers ({})", SDL_GetError());
-        exit(EXIT_FAILURE);
-    }
+    status->status |= 1;
 
 #ifndef __SWITCH__
     std::string controllerDb = Ship::Context::LocateFileAcrossAppDirs("gamecontrollerdb.txt");
@@ -27,6 +24,12 @@ int32_t osContInit(OSMesgQueue* mq, uint8_t* controllerBits, OSContStatus* statu
         SPDLOG_ERROR("Failed add SDL game controller mappings from \"{}\" ({})", controllerDb, SDL_GetError());
     }
 #endif
+
+    SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
+    if (SDL_Init(SDL_INIT_GAMECONTROLLER) != 0) {
+        SPDLOG_ERROR("Failed to initialize SDL game controllers ({})", SDL_GetError());
+        exit(EXIT_FAILURE);
+    }
 
     Ship::Context::GetInstance()->GetControlDeck()->Init(controllerBits);
 
@@ -43,47 +46,60 @@ void osContGetReadData(OSContPad* pad) {
     Ship::Context::GetInstance()->GetControlDeck()->WriteToPad(pad);
 }
 
+void osSetTime(OSTime time) {
+    __osCurrentTime =
+        std::chrono::duration_cast<n64CycleRateDuration>(std::chrono::steady_clock::now().time_since_epoch()).count() +
+        time;
+}
+
 // Returns the OS time matching the N64 46.875MHz cycle rate
-// LUSTODO: This should be adjusted to return the time since "boot"
-uint64_t osGetTime(void) {
+uint64_t osGetTime() {
     return std::chrono::duration_cast<n64CycleRateDuration>(std::chrono::steady_clock::now().time_since_epoch())
-        .count();
+               .count() -
+           __osCurrentTime;
 }
 
 // Returns the CPU clock count matching the N64 46.875Mhz cycle rate
-uint32_t osGetCount(void) {
+uint32_t osGetCount() {
     return std::chrono::duration_cast<n64CycleRateDuration>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
 
-void osCreateMesgQueue(OSMesgQueue* mq, OSMesg* msgBuf, int32_t count) {
-    mq->validCount = 0;
-    mq->first = 0;
-    mq->msgCount = count;
-    mq->msg = msgBuf;
-    return;
+OSPiHandle* osCartRomInit() {
+    return NULL;
 }
 
-int32_t osSendMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag) {
-    int32_t index;
-    if (mq->validCount >= mq->msgCount) {
-        return -1;
-    }
-    index = (mq->first + mq->validCount) % mq->msgCount;
-    mq->msg[index] = msg;
-    mq->validCount++;
+int osSetTimer(OSTimer* t, OSTime countdown, OSTime interval, OSMesgQueue* mq, OSMesg msg) {
     return 0;
 }
 
-int32_t osRecvMesg(OSMesgQueue* mq, OSMesg* msg, int32_t flag) {
-    if (mq->validCount == 0) {
-        return -1;
+int32_t osEPiStartDma(OSPiHandle* pihandle, OSIoMesg* mb, int32_t direction) {
+    return 0;
+}
+
+uint32_t osAiGetLength() {
+    // TODO: Implement
+    return 0;
+}
+
+int32_t osAiSetNextBuffer(void* buff, size_t len) {
+    // TODO: Implement
+    return 0;
+}
+
+int32_t __osMotorAccess(OSPfs* pfs, uint32_t vibrate) {
+    auto io = Ship::Context::GetInstance()->GetControlDeck()->GetControllerByPort(pfs->channel)->GetRumble();
+    if (vibrate) {
+        io->StartRumble();
+    } else {
+        io->StopRumble();
     }
-    if (msg != NULL) {
-        *msg = *(mq->first + mq->msg);
-    }
-    mq->first = (mq->first + 1) % mq->msgCount;
-    mq->validCount--;
+
+    return 0;
+}
+
+int32_t osMotorInit(OSMesgQueue* ctrlrqueue, OSPfs* pfs, int32_t channel) {
+    pfs->channel = channel;
     return 0;
 }
 }

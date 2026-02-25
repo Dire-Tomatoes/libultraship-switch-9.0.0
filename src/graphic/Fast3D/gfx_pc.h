@@ -10,17 +10,23 @@
 #include <vector>
 #include <stack>
 
-#include "libultraship/libultra/gbi.h"
+#include "graphic/Fast3D/lus_gbi.h"
 #include "libultraship/libultra/types.h"
+#include "public/bridge/gfxbridge.h"
 
 #include "resource/type/Texture.h"
+#include "resource/type/Light.h"
 #include "resource/Resource.h"
 
 // TODO figure out why changing these to 640x480 makes the game only render in a quarter of the window
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 
+#define MAX_SEGMENT_POINTERS 16
+
+extern uintptr_t gSegmentPointers[MAX_SEGMENT_POINTERS];
 extern uintptr_t gfxFramebuffer;
+extern int gInterpolationIndex;
 
 struct GfxRenderingAPI;
 struct GfxWindowManagerAPI;
@@ -67,16 +73,17 @@ struct TextureCacheValue {
 struct TextureCacheMapIter {
     TextureCacheMap::iterator it;
 };
+union Gfx;
 
 struct GfxExecStack {
     // This is a dlist stack used to handle dlist calls.
-    std::stack<Gfx*> cmd_stack = {};
+    std::stack<F3DGfx*> cmd_stack = {};
     // This is also a dlist stack but a std::vector is used to make it possible
     // to iterate on the elements.
     // The purpose of this is to identify an instruction at a poin in time
-    // which would not be possible with just a Gfx* because a dlist can be called multiple times
+    // which would not be possible with just a F3DGfx* because a dlist can be called multiple times
     // what we do instead is store the call path that leads to the instruction (including branches)
-    std::vector<const Gfx*> gfx_path = {};
+    std::vector<const F3DGfx*> gfx_path = {};
     struct CodeDisp {
         const char* file;
         int line;
@@ -84,15 +91,15 @@ struct GfxExecStack {
     // stack for OpenDisp/CloseDisps
     std::vector<CodeDisp> disp_stack{};
 
-    void start(Gfx* dlist);
+    void start(F3DGfx* dlist);
     void stop();
-    Gfx*& currCmd();
+    F3DGfx*& currCmd();
     void openDisp(const char* file, int line);
     void closeDisp();
     const std::vector<CodeDisp>& getDisp() const;
-    void branch(Gfx* caller);
-    void call(Gfx* caller, Gfx* callee);
-    Gfx* ret();
+    void branch(F3DGfx* caller);
+    void call(F3DGfx* caller, F3DGfx* callee);
+    F3DGfx* ret();
 };
 
 struct RGBA {
@@ -109,8 +116,14 @@ struct LoadedVertex {
 struct RawTexMetadata {
     uint16_t width, height;
     float h_byte_scale = 1, v_pixel_scale = 1;
-    std::shared_ptr<LUS::Texture> resource;
-    LUS::TextureType type;
+    std::shared_ptr<Fast::Texture> resource;
+    Fast::TextureType type;
+};
+
+struct ShaderMod {
+    bool enabled = false;
+    int16_t id;
+    uint8_t type;
 };
 
 #define MAX_BUFFERED 256
@@ -125,8 +138,8 @@ struct RSP {
     float MP_matrix[4][4];
     float P_matrix[4][4];
 
-    Light_t lookat[2];
-    Light current_lights[MAX_LIGHTS + 1];
+    F3DLight_t lookat[2];
+    F3DLight current_lights[MAX_LIGHTS + 1];
     float current_lights_coeffs[MAX_LIGHTS][3];
     float current_lookat_coeffs[2][3]; // lookat_x, lookat_y
     uint8_t current_num_lights;        // includes ambient light
@@ -170,8 +183,8 @@ struct RDP {
         uint8_t siz;
         uint8_t cms, cmt;
         uint8_t shifts, shiftt;
-        uint16_t uls, ult, lrs, lrt; // U10.2
-        uint16_t tmem;               // 0-511, in 64-bit word units
+        float uls, ult, lrs, lrt; // U10.2
+        uint16_t tmem;            // 0-511, in 64-bit word units
         uint32_t line_size_bytes;
         uint8_t palette;
         uint8_t tmem_index; // 0 or 1 for offset 0 kB or offset 2 kB, respectively
@@ -183,6 +196,7 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
+    ShaderMod current_shader;
 
     uint8_t prim_lod_fraction;
     struct RGBA env_color, prim_color, fog_color, fill_color, grayscale_color;
@@ -191,6 +205,18 @@ struct RDP {
     void* z_buf_address;
     void* color_image_address;
 };
+
+typedef enum Attribute {
+    MTX_PROJECTION = 0,
+    MTX_LOAD,
+    MTX_PUSH,
+    MTX_NOPUSH,
+    CULL_FRONT,
+    CULL_BACK,
+    CULL_BOTH,
+    MV_VIEWPORT,
+    MV_LIGHT,
+} Attribute;
 
 extern RDP g_rdp;
 extern RSP g_rsp;
@@ -213,11 +239,16 @@ extern uint32_t gfx_msaa_level;
 void gfx_init(struct GfxWindowManagerAPI* wapi, struct GfxRenderingAPI* rapi, const char* game_name,
               bool start_in_fullscreen, uint32_t width = SCREEN_WIDTH, uint32_t height = SCREEN_HEIGHT,
               uint32_t posX = 100, uint32_t posY = 100);
-void gfx_destroy(void);
-struct GfxRenderingAPI* gfx_get_current_rendering_api(void);
-void gfx_start_frame(void);
+void gfx_destroy();
+struct GfxRenderingAPI* gfx_get_current_rendering_api();
+void gfx_start_frame();
+
+// Since this function is "exposted" to the games, it needs to take a normal Gfx
 void gfx_run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements);
-void gfx_end_frame(void);
+void gfx_handle_window_events();
+bool gfx_is_frame_ready();
+void gfx_end_frame();
+void gfx_set_target_ucode(UcodeHandlers ucode);
 void gfx_set_target_fps(int);
 void gfx_set_maximum_frame_latency(int latency);
 void gfx_texture_cache_delete(const uint8_t* orig_addr);
@@ -230,5 +261,6 @@ void gfx_push_current_dir(char* path);
 int32_t gfx_check_image_signature(const char* imgData);
 void gfx_register_blended_texture(const char* name, uint8_t* mask, uint8_t* replacement = nullptr);
 void gfx_unregister_blended_texture(const char* name);
+const char* GfxGetOpcodeName(int8_t opcode);
 
 #endif
